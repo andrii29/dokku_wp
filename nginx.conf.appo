@@ -1,0 +1,92 @@
+http {
+    include       mime.types;
+    default_type  application/octet-stream;
+
+    #log_format  main  '$remote_addr - $remote_user [$time_local] "$request" '
+    #                  '$status $body_bytes_sent "$http_referer" '
+    #                  '"$http_user_agent" "$http_x_forwarded_for"';
+
+    #access_log  logs/access.log  main;
+
+    sendfile        on;
+    #tcp_nopush     on;
+
+    #keepalive_timeout  0;
+    keepalive_timeout  65;
+
+    #gzip  on;
+
+    server_tokens off;
+
+    fastcgi_buffers 256 4k;
+
+    # define an easy to reference name that can be used in fastgi_pass
+    upstream heroku-fcgi {
+        #server 127.0.0.1:4999 max_fails=3 fail_timeout=3s;
+        server unix:/tmp/heroku.fcgi.5000.sock max_fails=3 fail_timeout=3s;
+        keepalive 16;
+    }
+    
+    server {
+               
+        # TODO: use X-Forwarded-Host? http://comments.gmane.org/gmane.comp.web.nginx.english/2170
+        server_name test-www.appodeal.com;
+        listen 5000;
+        # FIXME: breaks redirects with foreman
+        port_in_redirect off;
+        
+       
+        root /app/home;
+	location / {
+		allow all;
+		#try_files $uri $uri/ @heroku-fcgi;
+#		return 302 /home$1;
+	}
+
+	location /home {	
+		allow all;
+		root /app;
+		index index.php;
+		try_files $uri $uri/ /home/index.php?q=$uri&args;
+ 
+	#location ~ \.php$ {
+        #    try_files @heroku-fcgi @heroku-fcgi;
+        }
+
+
+       #}
+
+ 
+        error_log stderr;
+        access_log /tmp/heroku.nginx_access.5000.log;
+        
+        
+        # restrict access to hidden files, just in case
+        location ~ /\. {
+            deny all;
+        }
+        
+        # default handling of .php
+        location ~ \.php$ {
+	    root /app/;
+		fastcgi_pass heroku-fcgi;
+		fastcgi_index index.php;
+            fastcgi_split_path_info ^(.+\.php)(/.*)$;
+            fastcgi_param DOCUMENT_ROOT /app/;
+	    fastcgi_param SCRIPT_FILENAME /app/$fastcgi_script_name;
+	    fastcgi_param  PATH_TRANSLATED  /app/$fastcgi_script_name;
+            include fastcgi_params;
+		fastcgi_param  QUERY_STRING     $query_string;
+        fastcgi_param  REQUEST_METHOD   $request_method;
+        fastcgi_param  CONTENT_TYPE     $content_type;
+        fastcgi_param  CONTENT_LENGTH   $content_length;
+        fastcgi_ignore_client_abort     off;
+        fastcgi_connect_timeout 500;
+        fastcgi_read_timeout 500;
+        fastcgi_buffer_size 128k;
+        fastcgi_buffers 4 512k;
+        fastcgi_intercept_errors on;
+	        }
+    }
+}
+
